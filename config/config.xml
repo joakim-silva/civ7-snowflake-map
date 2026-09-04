@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<Database>
+
+    <!-- =======================================================
+         LIMESPACE SNOWFLAKE MAP SIZE
+         ======================================================= -->
+
+    <MapSizes>
+
+        <Row
+            Domain="StandardMapSizes"
+            MapSizeType="MAPSIZE_LIMESPACE_SNOWFLAKE"
+            Name="LOC_MAPSIZE_LIMESPACE_SNOWFLAKE_NAME"
+            Description="LOC_MAPSIZE_LIMESPACE_SNOWFLAKE_DESCRIPTION"
+            MinPlayers="2"
+            MaxPlayers="6"
+            MaxHumans="6"
+            DefaultPlayers="6"
+            SortIndex="25"/>
+
+        <Row
+            Domain="DistantLandsMapSizes"
+            MapSizeType="MAPSIZE_LIMESPACE_SNOWFLAKE"
+            Name="LOC_MAPSIZE_LIMESPACE_SNOWFLAKE_NAME"
+            Description="LOC_MAPSIZE_LIMESPACE_SNOWFLAKE_DESCRIPTION"
+            MinPlayers="2"
+            MaxPlayers="6"
+            MaxHumans="6"
+            DefaultPlayers="6"
+            SortIndex="25"/>
+
+    </MapSizes>
+
+
+    <!-- =======================================================
+         MAP-SPECIFIC SIZE FILTER
+         ======================================================= -->
+
+    <SupportedValuesByMap>
+
+        <Row
+            Map="{limespace-snowflake}maps/snowflake.js"
+            Domain="StandardMapSizes"
+            Value="MAPSIZE_LIMESPACE_SNOWFLAKE"/>
+
+        <Row
+            Map="{limespace-snowflake}maps/snowflake.js"
+            Domain="DistantLandsMapSizes"
+            Value="MAPSIZE_LIMESPACE_SNOWFLAKE"/>
+
+    </SupportedValuesByMap>
+
+
+    <!-- =======================================================
+         MAP REGISTRATION
+         ======================================================= -->
+
+    <Maps>
+
+        <Row
+            Domain="StandardMaps"
+            File="{limespace-snowflake}maps/snowflake.js"
+            Name="LOC_MAP_LIMESPACE_SNOWFLAKE_NAME"
+            Description="LOC_MAP_LIMESPACE_SNOWFLAKE_DESCRIPTION"
+            SortIndex="80"/>
+
+    </Maps>
+
+</Database>

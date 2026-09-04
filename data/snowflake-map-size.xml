@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<Database>
+
+    <Types>
+        <Replace
+            Type="MAPSIZE_LIMESPACE_SNOWFLAKE"
+            Kind="KIND_MAPSIZE"/>
+    </Types>
+
+    <Maps>
+        <Replace
+            MapSizeType="MAPSIZE_LIMESPACE_SNOWFLAKE"
+            Name="LOC_MAPSIZE_LIMESPACE_SNOWFLAKE_NAME"
+            Description="LOC_MAPSIZE_LIMESPACE_SNOWFLAKE_DESCRIPTION"
+            DefaultPlayers="6"
+            PlayersLandmass1="6"
+            PlayersLandmass2="0"
+            GridWidth="61"
+            GridHeight="61"
+            NumNaturalWonders="4"
+            OceanWidth="4"
+            LakeSizeCutoff="8"
+            LakeGenerationFrequency="20"
+            Continents="6"
+            StartSectorRows="2"
+            StartSectorCols="3"/>
+    </Maps>
+
+    <AgeProgressionEventMapSizeOverrides>
+        <Row
+            AgeProgressionEventType="AGE_PROGRESSION_PLAYER_ELIMINATED"
+            MapSizeType="MAPSIZE_LIMESPACE_SNOWFLAKE"
+            Points="0"/>
+    </AgeProgressionEventMapSizeOverrides>
+
+</Database>

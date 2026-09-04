@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<Database>
+
+    <EnglishText>
+
+        <Row Tag="LOC_MAP_LIMESPACE_SNOWFLAKE_NAME">
+            <Text>Limespace Snowflake</Text>
+        </Row>
+
+        <Row Tag="LOC_MAP_LIMESPACE_SNOWFLAKE_DESCRIPTION">
+            <Text>A symmetrical six-arm map designed to give six civilizations equal starting conditions around a contested central region.</Text>
+        </Row>
+
+        <Row Tag="LOC_MAPSIZE_LIMESPACE_SNOWFLAKE_NAME">
+    <Text>Snowflake 61x61</Text>
+</Row>
+
+<Row Tag="LOC_MAPSIZE_LIMESPACE_SNOWFLAKE_DESCRIPTION">
+    <Text>Custom 61 by 61 map size for Limespace Snowflake.</Text>
+</Row>
+
+    </EnglishText>
+
+</Database>
