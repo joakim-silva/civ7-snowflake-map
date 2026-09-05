@@ -4,8 +4,6 @@
 
 A custom **61×61 six-player Snowflake map** for **Sid Meier's Civilization VII**.
 
-A custom **61×61 six-player Snowflake map** for **Sid Meier's Civilization VII**.
-
 The map was designed using my browser-based **Civ VII Map Editor**, then exported and integrated into Civilization VII as a standalone map mod.
 
 ## Features
