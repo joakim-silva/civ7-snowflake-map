@@ -1,21 +1,24 @@
 /*
     ============================================================
     LIMESPACE SNOWFLAKE
-    VERSION 8.5
+    VERSION 8.8
 
-    Browser map import + full Civ VII environment
+    Fixed:
+    - 61 x 61 Snowflake layout
+    - base terrain / biomes
+    - six fixed player starts
 
-    Includes:
-    - Exact 61 x 61 custom Snowflake map
-    - Browser-defined terrain / biomes
-    - Browser-defined hills
-    - Browser-defined mountains
-    - Browser-defined forests
-    - Civ VII rainfall
-    - Civ VII rivers
-    - Floodplains
-    - Civ VII legal resources
-    - Six exact player starts
+    Procedural:
+    - mountains
+    - hills
+    - forests
+    - rainfall
+    - rivers
+    - floodplains
+    - resources
+
+    Steam-safe:
+    - no /base-standard/ JavaScript imports
     ============================================================
 */
 
@@ -25,9 +28,7 @@
 // ============================================================
 
 import {
-
     g_FlatTerrain,
-
     g_CoastTerrain,
     g_OceanTerrain,
 
@@ -36,48 +37,12 @@ import {
     g_DesertBiome,
     g_TundraBiome,
     g_MarineBiome
-
 } from "./map-globals.js";
 
 
 import {
-
     LIMESPACE_SNOWFLAKE_MAP
-
 } from "./snowflake-map-data.js";
-
-
-/*
-    Use Firaxis' own rainfall generator.
-
-    We are not generating mountains/hills procedurally because
-    those already exist in our browser JSON.
-*/
-
-import {
-
-    buildRainfallMap
-
-} from "/base-standard/maps/elevation-terrain-generator.js";
-
-
-/*
-    Use Firaxis' normal resource generator.
-
-    This guarantees that the resources placed are legal for:
-
-    - terrain
-    - biome
-    - age
-    - land/water
-    - resource rules
-*/
-
-import {
-
-    generateResources
-
-} from "/base-standard/maps/resource-generator.js";
 
 
 // ============================================================
@@ -87,17 +52,42 @@ import {
 const EXPECTED_FORMAT =
     "LIMESPACE_CIV7_MAP_DATA";
 
-
 const SNOWFLAKE_WIDTH =
     61;
-
 
 const SNOWFLAKE_HEIGHT =
     61;
 
 
+// Terrain generation percentages.
+
+const MOUNTAIN_CHANCE =
+    6;
+
+const HILL_CHANCE =
+    28;
+
+const FOREST_GRASSLAND_CHANCE =
+    28;
+
+const FOREST_PLAINS_CHANCE =
+    20;
+
+const RESOURCE_PLACEMENT_CHANCE =
+    13;
+
+
+// Protect starting regions.
+
+const MOUNTAIN_START_BUFFER_SQ =
+    9;
+
+const HILL_START_BUFFER_SQ =
+    4;
+
+
 // ============================================================
-// LOOK UP CIV VII TERRAIN TYPES
+// GAMEINFO LOOKUPS
 // ============================================================
 
 function getTerrainIndex(
@@ -117,7 +107,7 @@ function getTerrainIndex(
     ) {
 
         throw new Error(
-            "Limespace Snowflake: Civ VII terrain not found: " +
+            "Limespace Snowflake: terrain not found: " +
             terrainType
         );
     }
@@ -126,28 +116,6 @@ function getTerrainIndex(
     return terrain.$index;
 }
 
-
-const HILL_TERRAIN =
-    getTerrainIndex(
-        "TERRAIN_HILL"
-    );
-
-
-const MOUNTAIN_TERRAIN =
-    getTerrainIndex(
-        "TERRAIN_MOUNTAIN"
-    );
-
-
-const NAVIGABLE_RIVER_TERRAIN =
-    getTerrainIndex(
-        "TERRAIN_NAVIGABLE_RIVER"
-    );
-
-
-// ============================================================
-// LOOK UP CIV VII FEATURES
-// ============================================================
 
 function getFeatureIndex(
     featureType
@@ -165,17 +133,35 @@ function getFeatureIndex(
         !feature
     ) {
 
-        console.log(
-            "Snowflake warning: feature not found: " +
+        throw new Error(
+            "Limespace Snowflake: feature not found: " +
             featureType
         );
-
-        return -1;
     }
 
 
     return feature.$index;
 }
+
+
+// Explicit lookups rather than relying on imported globals.
+
+const HILL_TERRAIN =
+    getTerrainIndex(
+        "TERRAIN_HILL"
+    );
+
+
+const MOUNTAIN_TERRAIN =
+    getTerrainIndex(
+        "TERRAIN_MOUNTAIN"
+    );
+
+
+const NAVIGABLE_RIVER_TERRAIN =
+    getTerrainIndex(
+        "TERRAIN_NAVIGABLE_RIVER"
+    );
 
 
 const FOREST_FEATURE =
@@ -241,11 +227,9 @@ function requestMapData(
         "=========================================="
     );
 
-
     console.log(
-        "Limespace Snowflake V8.5 map init"
+        "Limespace Snowflake V8.8 map init"
     );
-
 
     console.log(
         "Incoming dimensions: " +
@@ -255,51 +239,32 @@ function requestMapData(
     );
 
 
-    console.log(
-        "Incoming map size ID: " +
-        initParams.mapSize
-    );
-
-
-    // ========================================================
-    // FORCE EXACT SNOWFLAKE DIMENSIONS
-    // ========================================================
-
     initParams.width =
         SNOWFLAKE_WIDTH;
-
 
     initParams.height =
         SNOWFLAKE_HEIGHT;
 
 
-    // ========================================================
-    // DISABLE WRAPPING
-    // ========================================================
-
     initParams.wrapX =
         0;
-
 
     initParams.wrapY =
         0;
 
-
     initParams.WrapX =
         0;
-
 
     initParams.WrapY =
         0;
 
 
     console.log(
-        "Snowflake dimensions requested: " +
+        "Requested dimensions: " +
         initParams.width +
         " x " +
         initParams.height
     );
-
 
     console.log(
         "=========================================="
@@ -314,7 +279,193 @@ function requestMapData(
 
 
 // ============================================================
-// IMPORT BASE TERRAIN / BIOME
+// TILE HELPERS
+// ============================================================
+
+function getTile(
+    x,
+    y
+) {
+
+    const rows =
+        LIMESPACE_SNOWFLAKE_MAP
+            .terrainRows;
+
+
+    if (
+        !rows ||
+        y < 0 ||
+        y >= rows.length
+    ) {
+
+        return null;
+    }
+
+
+    const row =
+        rows[y];
+
+
+    if (
+        !row ||
+        x < 0 ||
+        x >= row.length
+    ) {
+
+        return null;
+    }
+
+
+    return row[x];
+}
+
+
+function isLandTile(
+    tile
+) {
+
+    if (
+        !tile ||
+        typeof tile.terrain !==
+        "string"
+    ) {
+
+        return false;
+    }
+
+
+    return (
+
+        tile.terrain !==
+        "ocean" &&
+
+        tile.terrain !==
+        "coast"
+
+    );
+}
+
+
+// ============================================================
+// PLAYER START HELPERS
+// ============================================================
+
+function getSnowflakePlayerStarts() {
+
+    if (
+
+        Array.isArray(
+            LIMESPACE_SNOWFLAKE_MAP
+                .playerStarts
+        ) &&
+
+        LIMESPACE_SNOWFLAKE_MAP
+            .playerStarts
+            .length >= 6
+
+    ) {
+
+        return (
+            LIMESPACE_SNOWFLAKE_MAP
+                .playerStarts
+        );
+    }
+
+
+    return FALLBACK_PLAYER_STARTS;
+}
+
+
+function distanceSquaredToNearestStart(
+    x,
+    y
+) {
+
+    const starts =
+        getSnowflakePlayerStarts();
+
+
+    let best =
+        Number.MAX_SAFE_INTEGER;
+
+
+    for (
+        let i = 0;
+        i < starts.length;
+        i++
+    ) {
+
+        const dx =
+            x -
+            Number(
+                starts[i].x
+            );
+
+        const dy =
+            y -
+            Number(
+                starts[i].y
+            );
+
+
+        const distance =
+            dx * dx +
+            dy * dy;
+
+
+        if (
+            distance <
+            best
+        ) {
+
+            best =
+                distance;
+        }
+    }
+
+
+    return best;
+}
+
+
+function isExactStart(
+    x,
+    y
+) {
+
+    const starts =
+        getSnowflakePlayerStarts();
+
+
+    for (
+        let i = 0;
+        i < starts.length;
+        i++
+    ) {
+
+        if (
+
+            Number(
+                starts[i].x
+            ) === x &&
+
+            Number(
+                starts[i].y
+            ) === y
+
+        ) {
+
+            return true;
+        }
+    }
+
+
+    return false;
+}
+
+
+// ============================================================
+// BASE TERRAIN
 // ============================================================
 
 function applyExportedTile(
@@ -327,10 +478,6 @@ function applyExportedTile(
         terrainName
     ) {
 
-        // ====================================================
-        // OCEAN
-        // ====================================================
-
         case "ocean":
 
             TerrainBuilder.setTerrainType(
@@ -339,20 +486,14 @@ function applyExportedTile(
                 g_OceanTerrain
             );
 
-
             TerrainBuilder.setBiomeType(
                 x,
                 y,
                 g_MarineBiome
             );
 
-
             break;
 
-
-        // ====================================================
-        // COAST
-        // ====================================================
 
         case "coast":
 
@@ -362,20 +503,14 @@ function applyExportedTile(
                 g_CoastTerrain
             );
 
-
             TerrainBuilder.setBiomeType(
                 x,
                 y,
                 g_MarineBiome
             );
 
-
             break;
 
-
-        // ====================================================
-        // GRASSLAND
-        // ====================================================
 
         case "grassland":
 
@@ -385,20 +520,14 @@ function applyExportedTile(
                 g_FlatTerrain
             );
 
-
             TerrainBuilder.setBiomeType(
                 x,
                 y,
                 g_GrasslandBiome
             );
 
-
             break;
 
-
-        // ====================================================
-        // PLAINS
-        // ====================================================
 
         case "plains":
 
@@ -408,20 +537,14 @@ function applyExportedTile(
                 g_FlatTerrain
             );
 
-
             TerrainBuilder.setBiomeType(
                 x,
                 y,
                 g_PlainsBiome
             );
 
-
             break;
 
-
-        // ====================================================
-        // DESERT
-        // ====================================================
 
         case "desert":
 
@@ -431,20 +554,14 @@ function applyExportedTile(
                 g_FlatTerrain
             );
 
-
             TerrainBuilder.setBiomeType(
                 x,
                 y,
                 g_DesertBiome
             );
 
-
             break;
 
-
-        // ====================================================
-        // TUNDRA
-        // ====================================================
 
         case "tundra":
 
@@ -454,20 +571,14 @@ function applyExportedTile(
                 g_FlatTerrain
             );
 
-
             TerrainBuilder.setBiomeType(
                 x,
                 y,
                 g_TundraBiome
             );
 
-
             break;
 
-
-        // ====================================================
-        // UNKNOWN
-        // ====================================================
 
         default:
 
@@ -486,20 +597,96 @@ function applyExportedTile(
 
 
 // ============================================================
-// IMPORT JSON MOUNTAINS
+// NEIGHBOUR TERRAIN COUNTER
 // ============================================================
 
-function importMountains(
+function countNearbyTerrain(
+    x,
+    y,
+    terrainType,
+    width,
+    height
+) {
+
+    let count =
+        0;
+
+
+    for (
+        let dy = -1;
+        dy <= 1;
+        dy++
+    ) {
+
+        for (
+            let dx = -1;
+            dx <= 1;
+            dx++
+        ) {
+
+            if (
+                dx === 0 &&
+                dy === 0
+            ) {
+
+                continue;
+            }
+
+
+            const nx =
+                x + dx;
+
+            const ny =
+                y + dy;
+
+
+            if (
+
+                nx < 0 ||
+                ny < 0 ||
+                nx >= width ||
+                ny >= height
+
+            ) {
+
+                continue;
+            }
+
+
+            if (
+
+                GameplayMap.getTerrainType(
+                    nx,
+                    ny
+                ) === terrainType
+
+            ) {
+
+                count++;
+            }
+        }
+    }
+
+
+    return count;
+}
+
+
+// ============================================================
+// MOUNTAINS
+// ============================================================
+
+function generateSnowflakeMountains(
     width,
     height
 ) {
 
     console.log(
-        "Importing browser mountains..."
+        "Generating mountains..."
     );
 
 
-    let count =
+    let placed =
         0;
 
 
@@ -509,11 +696,6 @@ function importMountains(
         y++
     ) {
 
-        const row =
-            LIMESPACE_SNOWFLAKE_MAP
-                .terrainRows[y];
-
-
         for (
             let x = 0;
             x < width;
@@ -521,11 +703,16 @@ function importMountains(
         ) {
 
             const tile =
-                row[x];
+                getTile(
+                    x,
+                    y
+                );
 
 
             if (
-                !tile.land
+                !isLandTile(
+                    tile
+                )
             ) {
 
                 continue;
@@ -533,8 +720,61 @@ function importMountains(
 
 
             if (
-                tile.elevation ===
-                "mountain"
+
+                distanceSquaredToNearestStart(
+                    x,
+                    y
+                ) <=
+                MOUNTAIN_START_BUFFER_SQ
+
+            ) {
+
+                continue;
+            }
+
+
+            let chance =
+                MOUNTAIN_CHANCE;
+
+
+            const nearby =
+                countNearbyTerrain(
+                    x,
+                    y,
+                    MOUNTAIN_TERRAIN,
+                    width,
+                    height
+                );
+
+
+            if (
+                nearby >= 1
+            ) {
+
+                chance +=
+                    7;
+            }
+
+
+            if (
+                nearby >= 2
+            ) {
+
+                chance +=
+                    4;
+            }
+
+
+            const roll =
+                TerrainBuilder.getRandomNumber(
+                    100,
+                    "Snowflake Mountain"
+                );
+
+
+            if (
+                roll <
+                chance
             ) {
 
                 TerrainBuilder.setTerrainType(
@@ -544,50 +784,59 @@ function importMountains(
                 );
 
 
-                count++;
+                placed++;
             }
         }
     }
 
 
     console.log(
-        "Browser mountains imported: " +
-        count
+        "Mountain placements requested: " +
+        placed
     );
 
 
-    return count;
+    return placed;
 }
 
 
 // ============================================================
-// IMPORT JSON HILLS
+// HILLS
 // ============================================================
 
-function importHills(
+function generateSnowflakeHills(
     width,
     height
 ) {
 
     console.log(
-        "Importing browser hills..."
+        "=========================================="
+    );
+
+    console.log(
+        "Generating Snowflake hills..."
     );
 
 
-    let count =
+    let requested =
         0;
 
+
+    /*
+        First pass.
+
+        We deliberately use an explicit TERRAIN_HILL index.
+
+        The previous version used the imported hill constant,
+        which appears not to have survived the map pipeline
+        correctly on this custom map.
+    */
 
     for (
         let y = 0;
         y < height;
         y++
     ) {
-
-        const row =
-            LIMESPACE_SNOWFLAKE_MAP
-                .terrainRows[y];
-
 
         for (
             let x = 0;
@@ -596,11 +845,32 @@ function importHills(
         ) {
 
             const tile =
-                row[x];
+                getTile(
+                    x,
+                    y
+                );
 
 
             if (
-                !tile.land
+                !isLandTile(
+                    tile
+                )
+            ) {
+
+                continue;
+            }
+
+
+            const existingTerrain =
+                GameplayMap.getTerrainType(
+                    x,
+                    y
+                );
+
+
+            if (
+                existingTerrain ===
+                MOUNTAIN_TERRAIN
             ) {
 
                 continue;
@@ -608,8 +878,93 @@ function importHills(
 
 
             if (
-                tile.elevation ===
-                "hill"
+
+                distanceSquaredToNearestStart(
+                    x,
+                    y
+                ) <=
+                HILL_START_BUFFER_SQ
+
+            ) {
+
+                continue;
+            }
+
+
+            let chance =
+                HILL_CHANCE;
+
+
+            // Make hills more common around mountains.
+
+            const nearbyMountains =
+                countNearbyTerrain(
+                    x,
+                    y,
+                    MOUNTAIN_TERRAIN,
+                    width,
+                    height
+                );
+
+
+            const nearbyHills =
+                countNearbyTerrain(
+                    x,
+                    y,
+                    HILL_TERRAIN,
+                    width,
+                    height
+                );
+
+
+            if (
+                nearbyMountains > 0
+            ) {
+
+                chance +=
+                    12;
+            }
+
+
+            if (
+                nearbyHills > 0
+            ) {
+
+                chance +=
+                    7;
+            }
+
+
+            if (
+                tile.terrain ===
+                "plains"
+            ) {
+
+                chance +=
+                    4;
+            }
+
+
+            if (
+                tile.terrain ===
+                "desert"
+            ) {
+
+                chance +=
+                    3;
+            }
+
+
+            const roll =
+                TerrainBuilder.getRandomNumber(
+                    100,
+                    "Snowflake Hill"
+                );
+
+
+            if (
+                roll <
+                chance
             ) {
 
                 TerrainBuilder.setTerrainType(
@@ -619,52 +974,18 @@ function importHills(
                 );
 
 
-                count++;
+                requested++;
             }
         }
     }
 
 
-    console.log(
-        "Browser hills imported: " +
-        count
-    );
+    // ========================================================
+    // VERIFY ACTUAL HILLS
+    // ========================================================
 
-
-    return count;
-}
-
-
-// ============================================================
-// IMPORT JSON FORESTS
-// ============================================================
-
-function importFeatures(
-    width,
-    height
-) {
-
-    console.log(
-        "Importing browser features..."
-    );
-
-
-    let forestCount =
+    let actual =
         0;
-
-
-    if (
-        FOREST_FEATURE < 0
-    ) {
-
-        console.log(
-            "Forest feature unavailable; skipping forests."
-        );
-
-        return {
-            forests: 0
-        };
-    }
 
 
     for (
@@ -673,10 +994,211 @@ function importFeatures(
         y++
     ) {
 
-        const row =
-            LIMESPACE_SNOWFLAKE_MAP
-                .terrainRows[y];
+        for (
+            let x = 0;
+            x < width;
+            x++
+        ) {
 
+            if (
+
+                GameplayMap.getTerrainType(
+                    x,
+                    y
+                ) ===
+                HILL_TERRAIN
+
+            ) {
+
+                actual++;
+            }
+        }
+    }
+
+
+    console.log(
+        "Hill placements requested: " +
+        requested
+    );
+
+
+    console.log(
+        "Hills present immediately after placement: " +
+        actual
+    );
+
+
+    /*
+        Safety pass.
+
+        If Civ VII somehow rejected every hill in the first
+        pass, force a smaller deterministic population of hills.
+    */
+
+    if (
+        actual === 0
+    ) {
+
+        console.log(
+            "WARNING: no hills survived first pass."
+        );
+
+        console.log(
+            "Running fallback hill pass..."
+        );
+
+
+        for (
+            let y = 0;
+            y < height;
+            y++
+        ) {
+
+            for (
+                let x = 0;
+                x < width;
+                x++
+            ) {
+
+                const tile =
+                    getTile(
+                        x,
+                        y
+                    );
+
+
+                if (
+                    !isLandTile(
+                        tile
+                    )
+                ) {
+
+                    continue;
+                }
+
+
+                if (
+
+                    GameplayMap.getTerrainType(
+                        x,
+                        y
+                    ) ===
+                    MOUNTAIN_TERRAIN
+
+                ) {
+
+                    continue;
+                }
+
+
+                if (
+
+                    distanceSquaredToNearestStart(
+                        x,
+                        y
+                    ) <=
+                    HILL_START_BUFFER_SQ
+
+                ) {
+
+                    continue;
+                }
+
+
+                /*
+                    Deterministic distribution.
+
+                    Roughly one in five eligible plots.
+                */
+
+                if (
+                    (
+                        x * 17 +
+                        y * 31
+                    ) %
+                    5 !== 0
+                ) {
+
+                    continue;
+                }
+
+
+                TerrainBuilder.setTerrainType(
+                    x,
+                    y,
+                    HILL_TERRAIN
+                );
+            }
+        }
+
+
+        actual =
+            0;
+
+
+        for (
+            let y = 0;
+            y < height;
+            y++
+        ) {
+
+            for (
+                let x = 0;
+                x < width;
+                x++
+            ) {
+
+                if (
+
+                    GameplayMap.getTerrainType(
+                        x,
+                        y
+                    ) ===
+                    HILL_TERRAIN
+
+                ) {
+
+                    actual++;
+                }
+            }
+        }
+
+
+        console.log(
+            "Hills after fallback pass: " +
+            actual
+        );
+    }
+
+
+    console.log(
+        "=========================================="
+    );
+
+
+    return actual;
+}
+
+
+// ============================================================
+// RAINFALL
+// ============================================================
+
+function buildSnowflakeRainfallMap(
+    width,
+    height
+) {
+
+    console.log(
+        "Building rainfall..."
+    );
+
+
+    for (
+        let y = 0;
+        y < height;
+        y++
+    ) {
 
         for (
             let x = 0;
@@ -685,93 +1207,121 @@ function importFeatures(
         ) {
 
             const tile =
-                row[x];
-
-
-            if (
-                !tile.land
-            ) {
-
-                continue;
-            }
-
-
-            if (
-                tile.feature !==
-                "forest"
-            ) {
-
-                continue;
-            }
-
-
-            /*
-                Do not place forest on a mountain.
-
-                The browser editor normally avoids this anyway,
-                but this protects Civ VII from an illegal
-                combination.
-            */
-
-            if (
-                tile.elevation ===
-                "mountain"
-            ) {
-
-                console.log(
-                    "Skipping forest on mountain at " +
-                    x +
-                    "," +
+                getTile(
+                    x,
                     y
                 );
 
+
+            if (
+                !isLandTile(
+                    tile
+                )
+            ) {
+
                 continue;
             }
 
 
-            const featureParam = {
-
-                Feature:
-                    FOREST_FEATURE,
-
-                Direction:
-                    -1,
-
-                Elevation:
-                    0
-
-            };
+            let rainfall =
+                100;
 
 
-            TerrainBuilder.setFeatureType(
+            switch (
+                tile.terrain
+            ) {
+
+                case "grassland":
+
+                    rainfall =
+                        125;
+
+                    break;
+
+
+                case "plains":
+
+                    rainfall =
+                        95;
+
+                    break;
+
+
+                case "desert":
+
+                    rainfall =
+                        35;
+
+                    break;
+
+
+                case "tundra":
+
+                    rainfall =
+                        70;
+
+                    break;
+            }
+
+
+            const terrain =
+                GameplayMap.getTerrainType(
+                    x,
+                    y
+                );
+
+
+            if (
+                terrain ===
+                MOUNTAIN_TERRAIN
+            ) {
+
+                rainfall +=
+                    25;
+            }
+
+
+            if (
+                terrain ===
+                HILL_TERRAIN
+            ) {
+
+                rainfall +=
+                    10;
+            }
+
+
+            rainfall +=
+
+                TerrainBuilder.getRandomNumber(
+                    31,
+                    "Snowflake Rain"
+                ) -
+
+                15;
+
+
+            if (
+                rainfall < 5
+            ) {
+
+                rainfall =
+                    5;
+            }
+
+
+            TerrainBuilder.setRainfall(
                 x,
                 y,
-                featureParam
+                rainfall
             );
-
-
-            forestCount++;
         }
     }
-
-
-    console.log(
-        "Browser forests imported: " +
-        forestCount
-    );
-
-
-    return {
-
-        forests:
-            forestCount
-
-    };
 }
 
 
 // ============================================================
-// GENERATE RIVERS
+// RIVERS
 // ============================================================
 
 function generateSnowflakeRivers(
@@ -780,26 +1330,9 @@ function generateSnowflakeRivers(
 ) {
 
     console.log(
-        "=========================================="
+        "Generating rivers..."
     );
 
-
-    console.log(
-        "Generating Snowflake rivers..."
-    );
-
-
-    /*
-        Firaxis continental maps use:
-
-            modelRivers(5, 15, navigableRiverTerrain)
-
-        We begin with the same conservative settings.
-
-        Snowflake's arms are relatively narrow, so this is
-        preferable to the much more aggressive archipelago
-        value of 70.
-    */
 
     TerrainBuilder.modelRivers(
         5,
@@ -808,20 +1341,11 @@ function generateSnowflakeRivers(
     );
 
 
-    // Let Civ VII reconcile river/terrain relationships.
-
     TerrainBuilder.validateAndFixTerrain();
 
 
-    // Give modeled rivers their internal definitions/names.
-
     TerrainBuilder.defineNamedRivers();
 
-
-    /*
-        Add floodplains using Firaxis' normal continents-map
-        settings.
-    */
 
     TerrainBuilder.addFloodplains(
         4,
@@ -829,15 +1353,10 @@ function generateSnowflakeRivers(
     );
 
 
-    // ========================================================
-    // REPORT RESULT
-    // ========================================================
-
-    let ordinaryRiverTiles =
+    let normal =
         0;
 
-
-    let navigableRiverTiles =
+    let navigable =
         0;
 
 
@@ -860,7 +1379,7 @@ function generateSnowflakeRivers(
                 )
             ) {
 
-                navigableRiverTiles++;
+                navigable++;
             }
 
             else if (
@@ -870,82 +1389,39 @@ function generateSnowflakeRivers(
                 )
             ) {
 
-                ordinaryRiverTiles++;
+                normal++;
             }
         }
     }
 
 
-    console.log(
-        "Ordinary river tiles: " +
-        ordinaryRiverTiles
-    );
-
-
-    console.log(
-        "Navigable river tiles: " +
-        navigableRiverTiles
-    );
-
-
-    console.log(
-        "=========================================="
-    );
-
-
     return {
 
-        ordinary:
-            ordinaryRiverTiles,
+        normal:
+            normal,
 
         navigable:
-            navigableRiverTiles
+            navigable
 
     };
 }
 
 
 // ============================================================
-// GENERATE CIV VII RESOURCES
+// FORESTS
 // ============================================================
 
-function generateSnowflakeResources(
+function generateSnowflakeForests(
     width,
     height
 ) {
 
     console.log(
-        "=========================================="
+        "Generating forests..."
     );
 
 
-    console.log(
-        "Generating Civ VII resources..."
-    );
-
-
-    /*
-        This uses Firaxis' own generator.
-
-        The browser editor's resourceSlot data remains available
-        in the JSON. For V8.5 we let Civ VII choose the actual
-        legal resource types.
-
-        A later version can make the JSON slots control the
-        exact resource positions/categories.
-    */
-
-    generateResources(
-        width,
-        height
-    );
-
-
-    // ========================================================
-    // COUNT RESOURCES
-    // ========================================================
-
-    let resourceCount =
+    let placed =
         0;
 
 
@@ -961,86 +1437,384 @@ function generateSnowflakeResources(
             x++
         ) {
 
-            const resource =
-                GameplayMap.getResourceType(
+            const tile =
+                getTile(
                     x,
                     y
                 );
 
 
             if (
-                resource !==
-                ResourceTypes.NO_RESOURCE
+                !isLandTile(
+                    tile
+                )
             ) {
 
-                resourceCount++;
+                continue;
             }
+
+
+            if (
+
+                tile.terrain !==
+                "grassland" &&
+
+                tile.terrain !==
+                "plains"
+
+            ) {
+
+                continue;
+            }
+
+
+            const terrain =
+                GameplayMap.getTerrainType(
+                    x,
+                    y
+                );
+
+
+            if (
+                terrain ===
+                MOUNTAIN_TERRAIN
+            ) {
+
+                continue;
+            }
+
+
+            if (
+                isExactStart(
+                    x,
+                    y
+                )
+            ) {
+
+                continue;
+            }
+
+
+            let chance =
+
+                tile.terrain ===
+                "grassland"
+
+                ? FOREST_GRASSLAND_CHANCE
+
+                : FOREST_PLAINS_CHANCE;
+
+
+            if (
+                GameplayMap.isRiver(
+                    x,
+                    y
+                )
+            ) {
+
+                chance +=
+                    7;
+            }
+
+
+            const roll =
+                TerrainBuilder.getRandomNumber(
+                    100,
+                    "Snowflake Forest"
+                );
+
+
+            if (
+                roll >=
+                chance
+            ) {
+
+                continue;
+            }
+
+
+            TerrainBuilder.setFeatureType(
+                x,
+                y,
+                {
+                    Feature:
+                        FOREST_FEATURE,
+
+                    Direction:
+                        -1,
+
+                    Elevation:
+                        0
+                }
+            );
+
+
+            placed++;
         }
     }
 
 
     console.log(
-        "Resources placed: " +
-        resourceCount
+        "Forests generated: " +
+        placed
     );
 
 
-    console.log(
-        "=========================================="
-    );
-
-
-    return resourceCount;
+    return placed;
 }
 
 
 // ============================================================
-// PLAYER START DATA
+// RESOURCE HELPERS
 // ============================================================
 
-function getSnowflakePlayerStarts() {
+function getAvailableResourceIndices() {
+
+    const indices =
+        [];
+
+
+    const generated =
+        ResourceBuilder.getGeneratedMapResources(
+            3
+        );
+
 
     if (
-
-        Array.isArray(
-            LIMESPACE_SNOWFLAKE_MAP
-                .playerStarts
-        ) &&
-
-        LIMESPACE_SNOWFLAKE_MAP
-            .playerStarts
-            .length >= 6
-
+        !generated
     ) {
 
-        console.log(
-            "Using player starts from browser export."
-        );
+        return indices;
+    }
 
 
-        return (
-            LIMESPACE_SNOWFLAKE_MAP
-                .playerStarts
-        );
+    for (
+        let i = 0;
+        i < generated.length;
+        i++
+    ) {
+
+        const resource =
+            GameInfo.Resources.lookup(
+                generated[i]
+            );
+
+
+        if (
+            resource
+        ) {
+
+            indices.push(
+                resource.$index
+            );
+        }
+    }
+
+
+    return indices;
+}
+
+
+function hasNearbyResource(
+    x,
+    y,
+    width,
+    height
+) {
+
+    for (
+        let dy = -1;
+        dy <= 1;
+        dy++
+    ) {
+
+        for (
+            let dx = -1;
+            dx <= 1;
+            dx++
+        ) {
+
+            if (
+                dx === 0 &&
+                dy === 0
+            ) {
+
+                continue;
+            }
+
+
+            const nx =
+                x + dx;
+
+            const ny =
+                y + dy;
+
+
+            if (
+
+                nx < 0 ||
+                ny < 0 ||
+                nx >= width ||
+                ny >= height
+
+            ) {
+
+                continue;
+            }
+
+
+            if (
+
+                GameplayMap.getResourceType(
+                    nx,
+                    ny
+                ) !==
+                ResourceTypes.NO_RESOURCE
+
+            ) {
+
+                return true;
+            }
+        }
+    }
+
+
+    return false;
+}
+
+
+// ============================================================
+// RESOURCES
+// ============================================================
+
+function generateSnowflakeResources(
+    width,
+    height
+) {
+
+    console.log(
+        "Generating resources..."
+    );
+
+
+    const resources =
+        getAvailableResourceIndices();
+
+
+    let placed =
+        0;
+
+
+    for (
+        let y = 0;
+        y < height;
+        y++
+    ) {
+
+        for (
+            let x = 0;
+            x < width;
+            x++
+        ) {
+
+            const roll =
+                TerrainBuilder.getRandomNumber(
+                    100,
+                    "Snowflake Resource Density"
+                );
+
+
+            if (
+                roll >=
+                RESOURCE_PLACEMENT_CHANCE
+            ) {
+
+                continue;
+            }
+
+
+            if (
+                hasNearbyResource(
+                    x,
+                    y,
+                    width,
+                    height
+                )
+            ) {
+
+                continue;
+            }
+
+
+            const legal =
+                [];
+
+
+            for (
+                let i = 0;
+                i < resources.length;
+                i++
+            ) {
+
+                if (
+
+                    ResourceBuilder.canHaveResource(
+                        x,
+                        y,
+                        resources[i],
+                        false
+                    )
+
+                ) {
+
+                    legal.push(
+                        resources[i]
+                    );
+                }
+            }
+
+
+            if (
+                legal.length === 0
+            ) {
+
+                continue;
+            }
+
+
+            const choice =
+                TerrainBuilder.getRandomNumber(
+                    legal.length,
+                    "Snowflake Resource Choice"
+                );
+
+
+            ResourceBuilder.setResourceType(
+                x,
+                y,
+                legal[
+                    choice
+                ]
+            );
+
+
+            placed++;
+        }
     }
 
 
     console.log(
-        "Browser export has no valid playerStarts array."
+        "Resources generated: " +
+        placed
     );
 
 
-    console.log(
-        "Using V8.5 fallback Snowflake starts."
-    );
-
-
-    return FALLBACK_PLAYER_STARTS;
+    return placed;
 }
 
 
 // ============================================================
-// ASSIGN EXACT PLAYER STARTS
+// PLAYER STARTS
 // ============================================================
 
 function assignSnowflakePlayerStarts(
@@ -1048,127 +1822,62 @@ function assignSnowflakePlayerStarts(
     height
 ) {
 
-    console.log(
-        "=========================================="
-    );
-
-
-    console.log(
-        "Assigning fixed Snowflake player starts..."
-    );
-
-
-    const configuredStarts =
+    const starts =
         getSnowflakePlayerStarts();
 
 
-    const aliveMajorIds =
+    const players =
         Players.getAliveMajorIds();
 
 
     if (
-        !Array.isArray(
-            aliveMajorIds
-        )
+        players.length >
+        starts.length
     ) {
 
         throw new Error(
 
-            "Limespace Snowflake: " +
-            "Players.getAliveMajorIds() did not return an array."
+            "Limespace Snowflake supports only " +
+            starts.length +
+            " major players."
 
         );
     }
 
 
-    console.log(
-        "Alive major players: " +
-        aliveMajorIds.length
-    );
-
-
-    if (
-        aliveMajorIds.length >
-        configuredStarts.length
-    ) {
-
-        throw new Error(
-
-            "Limespace Snowflake supports " +
-            configuredStarts.length +
-            " fixed major starts, but Civ VII has " +
-            aliveMajorIds.length +
-            " alive major players."
-
-        );
-    }
-
-
-    const assignedStarts =
+    const result =
         [];
 
 
     for (
         let i = 0;
-        i < aliveMajorIds.length;
+        i < players.length;
         i++
     ) {
 
-        const playerId =
-            aliveMajorIds[i];
-
-
-        const start =
-            configuredStarts[i];
-
-
         const x =
             Number(
-                start.x
+                starts[i].x
             );
-
 
         const y =
             Number(
-                start.y
+                starts[i].y
             );
-
-
-        // ====================================================
-        // VALIDATE
-        // ====================================================
-
-        if (
-
-            !Number.isInteger(x) ||
-            !Number.isInteger(y)
-
-        ) {
-
-            throw new Error(
-
-                "Limespace Snowflake: invalid start coordinate " +
-                "for arm " +
-                (i + 1)
-
-            );
-        }
 
 
         if (
 
             x < 0 ||
-            x >= width ||
             y < 0 ||
+            x >= width ||
             y >= height
 
         ) {
 
             throw new Error(
 
-                "Limespace Snowflake: start " +
-                (i + 1) +
-                " outside map at " +
+                "Invalid Snowflake start position: " +
                 x +
                 "," +
                 y
@@ -1177,124 +1886,83 @@ function assignSnowflakePlayerStarts(
         }
 
 
-        const plotIndex =
-            y * width + x;
+        const plot =
+            y *
+            width +
+            x;
 
 
         StartPositioner.setStartPosition(
-            plotIndex,
-            playerId
+            plot,
+            players[i]
         );
 
 
-        assignedStarts.push(
-            plotIndex
+        result.push(
+            plot
         );
 
 
         console.log(
 
             "Player " +
-            playerId +
-            " -> arm " +
-            (i + 1) +
-            " at (" +
+            players[i] +
+            " start = (" +
             x +
-            ", " +
-            y +
-            "), plot=" +
-            plotIndex
-
-        );
-    }
-
-
-    console.log(
-        "Fixed player starts assigned: " +
-        assignedStarts.length
-    );
-
-
-    console.log(
-        "=========================================="
-    );
-
-
-    return assignedStarts;
-}
-
-
-// ============================================================
-// VERIFY STARTS
-// ============================================================
-
-function verifySnowflakePlayerStarts() {
-
-    const aliveMajorIds =
-        Players.getAliveMajorIds();
-
-
-    console.log(
-        "Verifying Snowflake starts..."
-    );
-
-
-    for (
-        let i = 0;
-        i < aliveMajorIds.length;
-        i++
-    ) {
-
-        const playerId =
-            aliveMajorIds[i];
-
-
-        const plotIndex =
-            StartPositioner.getStartPosition(
-                playerId
-            );
-
-
-        if (
-            plotIndex === -1
-        ) {
-
-            throw new Error(
-
-                "Limespace Snowflake: player " +
-                playerId +
-                " has no starting plot."
-
-            );
-        }
-
-
-        const x =
-            plotIndex %
-            GameplayMap.getGridWidth();
-
-
-        const y =
-            Math.floor(
-
-                plotIndex /
-                GameplayMap.getGridWidth()
-
-            );
-
-
-        console.log(
-
-            "Verified player " +
-            playerId +
-            " start: (" +
-            x +
-            ", " +
+            "," +
             y +
             ")"
 
         );
     }
+
+
+    return result;
+}
+
+
+// ============================================================
+// FINAL HILL VERIFICATION
+// ============================================================
+
+function countFinalHills(
+    width,
+    height
+) {
+
+    let hills =
+        0;
+
+
+    for (
+        let y = 0;
+        y < height;
+        y++
+    ) {
+
+        for (
+            let x = 0;
+            x < width;
+            x++
+        ) {
+
+            if (
+
+                GameplayMap.getTerrainType(
+                    x,
+                    y
+                ) ===
+                HILL_TERRAIN
+
+            ) {
+
+                hills++;
+            }
+        }
+    }
+
+
+    return hills;
 }
 
 
@@ -1308,35 +1976,21 @@ function generateMap() {
         "=========================================="
     );
 
-
     console.log(
-        "Generating Limespace Snowflake V8.5"
+        "Generating Limespace Snowflake V8.8"
     );
-
-
-    console.log(
-        "Terrain + Elevation + Forests + Rivers + Resources"
-    );
-
 
     console.log(
         "=========================================="
     );
 
 
-    // ========================================================
-    // VALIDATE EXPORT
-    // ========================================================
-
     if (
         !LIMESPACE_SNOWFLAKE_MAP
     ) {
 
         throw new Error(
-
-            "Limespace Snowflake: " +
-            "LIMESPACE_SNOWFLAKE_MAP is missing."
-
+            "Snowflake map data missing."
         );
     }
 
@@ -1349,23 +2003,10 @@ function generateMap() {
     ) {
 
         throw new Error(
-
-            "Limespace Snowflake: invalid map format. " +
-
-            "Expected '" +
-            EXPECTED_FORMAT +
-
-            "', received '" +
-            LIMESPACE_SNOWFLAKE_MAP.format +
-            "'."
-
+            "Invalid Snowflake map format."
         );
     }
 
-
-    // ========================================================
-    // DIMENSIONS
-    // ========================================================
 
     const width =
         GameplayMap.getGridWidth();
@@ -1375,130 +2016,34 @@ function generateMap() {
         GameplayMap.getGridHeight();
 
 
-    const exportWidth =
-        LIMESPACE_SNOWFLAKE_MAP.width;
-
-
-    const exportHeight =
-        LIMESPACE_SNOWFLAKE_MAP.height;
-
-
-    console.log(
-        "Civ VII dimensions: " +
-        width +
-        " x " +
-        height
-    );
-
-
-    console.log(
-        "Export dimensions: " +
-        exportWidth +
-        " x " +
-        exportHeight
-    );
-
-
     if (
 
-        width !== exportWidth ||
-        height !== exportHeight
+        width !==
+        LIMESPACE_SNOWFLAKE_MAP.width ||
+
+        height !==
+        LIMESPACE_SNOWFLAKE_MAP.height
 
     ) {
 
         throw new Error(
 
-            "Limespace Snowflake: map dimension mismatch. " +
+            "Snowflake map dimension mismatch: " +
 
-            "Civ VII = " +
             width +
             "x" +
-            height +
-
-            ", export = " +
-            exportWidth +
-            "x" +
-            exportHeight
-
-        );
-    }
-
-
-    console.log(
-        "Map dimensions match."
-    );
-
-
-    // ========================================================
-    // TERRAIN ROW VALIDATION
-    // ========================================================
-
-    if (
-
-        !Array.isArray(
-            LIMESPACE_SNOWFLAKE_MAP
-                .terrainRows
-        )
-
-    ) {
-
-        throw new Error(
-
-            "Limespace Snowflake: terrainRows missing."
-
-        );
-    }
-
-
-    if (
-
-        LIMESPACE_SNOWFLAKE_MAP
-            .terrainRows
-            .length !== height
-
-    ) {
-
-        throw new Error(
-
-            "Limespace Snowflake: terrainRows height mismatch."
+            height
 
         );
     }
 
 
     // ========================================================
-    // TERRAIN COUNTERS
+    // BASE MAP
     // ========================================================
 
-    const counts = {
-
-        ocean: 0,
-
-        coast: 0,
-
-        grassland: 0,
-
-        plains: 0,
-
-        desert: 0,
-
-        tundra: 0
-
-    };
-
-
-    let totalTiles =
+    let tileCount =
         0;
-
-
-    // ========================================================
-    // STAGE 1
-    // IMPORT BASE TERRAIN AND BIOMES
-    // ========================================================
-
-    console.log(
-        "Importing browser terrain..."
-    );
 
 
     for (
@@ -1513,32 +2058,13 @@ function generateMap() {
 
 
         if (
-            !Array.isArray(row)
-        ) {
-
-            throw new Error(
-
-                "Limespace Snowflake: terrain row " +
-                y +
-                " missing."
-
-            );
-        }
-
-
-        if (
+            !row ||
             row.length !== width
         ) {
 
             throw new Error(
-
-                "Limespace Snowflake: terrain row " +
-                y +
-                " width=" +
-                row.length +
-                ", expected=" +
-                width
-
+                "Invalid Snowflake row " +
+                y
             );
         }
 
@@ -1553,55 +2079,6 @@ function generateMap() {
                 row[x];
 
 
-            if (
-                !tile
-            ) {
-
-                throw new Error(
-
-                    "Limespace Snowflake: missing tile at " +
-                    x +
-                    "," +
-                    y
-
-                );
-            }
-
-
-            if (
-
-                tile.x !== x ||
-                tile.y !== y
-
-            ) {
-
-                throw new Error(
-
-                    "Limespace Snowflake: coordinate mismatch at " +
-                    x +
-                    "," +
-                    y
-
-                );
-            }
-
-
-            if (
-                typeof tile.terrain !==
-                "string"
-            ) {
-
-                throw new Error(
-
-                    "Limespace Snowflake: no terrain string at " +
-                    x +
-                    "," +
-                    y
-
-                );
-            }
-
-
             applyExportedTile(
                 x,
                 y,
@@ -1609,202 +2086,104 @@ function generateMap() {
             );
 
 
-            if (
-
-                Object.prototype
-                    .hasOwnProperty
-                    .call(
-                        counts,
-                        tile.terrain
-                    )
-
-            ) {
-
-                counts[
-                    tile.terrain
-                ]++;
-            }
-
-
-            totalTiles++;
+            tileCount++;
         }
     }
 
 
     console.log(
-        "Base terrain import complete."
-    );
-
-
-    console.log(
-        "Ocean: " +
-        counts.ocean
-    );
-
-
-    console.log(
-        "Coast: " +
-        counts.coast
-    );
-
-
-    console.log(
-        "Grassland: " +
-        counts.grassland
-    );
-
-
-    console.log(
-        "Plains: " +
-        counts.plains
-    );
-
-
-    console.log(
-        "Desert: " +
-        counts.desert
-    );
-
-
-    console.log(
-        "Tundra: " +
-        counts.tundra
-    );
-
-
-    console.log(
-        "Total tiles: " +
-        totalTiles
+        "Base tiles loaded: " +
+        tileCount
     );
 
 
     // ========================================================
-    // TILE COUNT CHECK
+    // INITIAL MAP DATA
     // ========================================================
-
-    const expectedTileCount =
-        width *
-        height;
-
-
-    if (
-        totalTiles !==
-        expectedTileCount
-    ) {
-
-        throw new Error(
-
-            "Limespace Snowflake: imported " +
-            totalTiles +
-            " tiles, expected " +
-            expectedTileCount
-
-        );
-    }
-
-
-    if (
-        totalTiles !==
-        3721
-    ) {
-
-        throw new Error(
-
-            "Limespace Snowflake: expected 3721 tiles, got " +
-            totalTiles
-
-        );
-    }
-
-
-    // ========================================================
-    // STAGE 2
-    // INITIAL TERRAIN GEOMETRY
-    // ========================================================
-
-    console.log(
-        "Validating base terrain..."
-    );
-
 
     TerrainBuilder.validateAndFixTerrain();
 
-
-    console.log(
-        "Recalculating areas..."
-    );
-
-
     AreaBuilder.recalculateAreas();
-
-
-    console.log(
-        "Stamping continents..."
-    );
-
 
     TerrainBuilder.stampContinents();
 
 
     // ========================================================
-    // STAGE 3
-    // JSON MOUNTAINS
+    // MOUNTAINS
     // ========================================================
 
-    const mountainCount =
-        importMountains(
+    const mountains =
+        generateSnowflakeMountains(
             width,
             height
         );
 
 
-    // ========================================================
-    // STAGE 4
-    // BUILD ELEVATION
-    // ========================================================
-
-    console.log(
-        "Building Civ VII elevation data..."
-    );
-
+    /*
+        Civ VII normally builds elevation after mountain
+        generation.
+    */
 
     TerrainBuilder.buildElevation();
 
 
     // ========================================================
-    // STAGE 5
-    // JSON HILLS
+    // HILLS
     // ========================================================
 
-    const hillCount =
-        importHills(
+    const hillsInitially =
+        generateSnowflakeHills(
             width,
             height
         );
 
 
-    // ========================================================
-    // STAGE 6
-    // RAINFALL
-    // ========================================================
+    /*
+        Important change in V8.8:
+
+        rebuild elevation after our custom hill pass.
+
+        This gives Civ VII another opportunity to synchronize
+        the visual/elevation state of the terrain with the
+        TERRAIN_HILL assignments.
+    */
+
+    TerrainBuilder.buildElevation();
+
+
+    const hillsAfterElevation =
+        countFinalHills(
+            width,
+            height
+        );
+
 
     console.log(
-        "Building rainfall map..."
+        "Hills before elevation rebuild: " +
+        hillsInitially
+    );
+
+    console.log(
+        "Hills after elevation rebuild: " +
+        hillsAfterElevation
     );
 
 
-    buildRainfallMap(
+    // ========================================================
+    // RAINFALL
+    // ========================================================
+
+    buildSnowflakeRainfallMap(
         width,
         height
     );
 
 
     // ========================================================
-    // STAGE 7
     // RIVERS
     // ========================================================
 
-    const riverStats =
+    const rivers =
         generateSnowflakeRivers(
             width,
             height
@@ -1812,57 +2191,30 @@ function generateMap() {
 
 
     // ========================================================
-    // STAGE 8
-    // JSON FORESTS
+    // FORESTS
     // ========================================================
 
-    const featureStats =
-        importFeatures(
+    const forests =
+        generateSnowflakeForests(
             width,
             height
         );
 
 
     // ========================================================
-    // STAGE 9
-    // FINAL TERRAIN VALIDATION
+    // FINAL TERRAIN STATE
     // ========================================================
-
-    console.log(
-        "Final terrain validation..."
-    );
-
-
-    TerrainBuilder.validateAndFixTerrain();
-
-
-    console.log(
-        "Recalculating final map areas..."
-    );
-
 
     AreaBuilder.recalculateAreas();
-
-
-    // ========================================================
-    // STAGE 10
-    // WATER DATA
-    // ========================================================
-
-    console.log(
-        "Storing water data..."
-    );
-
 
     TerrainBuilder.storeWaterData();
 
 
     // ========================================================
-    // STAGE 11
     // RESOURCES
     // ========================================================
 
-    const resourceCount =
+    const resources =
         generateSnowflakeResources(
             width,
             height
@@ -1870,46 +2222,45 @@ function generateMap() {
 
 
     // ========================================================
-    // STAGE 12
     // FERTILITY
     // ========================================================
-
-    console.log(
-        "Recalculating fertility..."
-    );
-
 
     FertilityBuilder.recalculate();
 
 
     // ========================================================
-    // STAGE 13
-    // FIXED SIX PLAYER STARTS
+    // STARTING POSITIONS
     // ========================================================
 
-    const startPositions =
+    const starts =
         assignSnowflakePlayerStarts(
             width,
             height
         );
 
 
-    verifySnowflakePlayerStarts();
+    // ========================================================
+    // FINAL HILL CHECK
+    // ========================================================
+
+    const finalHills =
+        countFinalHills(
+            width,
+            height
+        );
 
 
     // ========================================================
-    // FINAL REPORT
+    // REPORT
     // ========================================================
 
     console.log(
         "=========================================="
     );
 
-
     console.log(
-        "Limespace Snowflake V8.5 complete"
+        "Limespace Snowflake V8.8 COMPLETE"
     );
-
 
     console.log(
         "Grid: " +
@@ -1918,54 +2269,45 @@ function generateMap() {
         height
     );
 
-
     console.log(
-        "Tiles: " +
-        totalTiles
+        "Mountains requested: " +
+        mountains
     );
 
-
     console.log(
-        "Mountains: " +
-        mountainCount
+        "Hills originally generated: " +
+        hillsInitially
     );
 
-
     console.log(
-        "Hills: " +
-        hillCount
+        "FINAL HILLS PRESENT: " +
+        finalHills
     );
-
 
     console.log(
         "Forests: " +
-        featureStats.forests
+        forests
     );
-
 
     console.log(
-        "Ordinary rivers: " +
-        riverStats.ordinary
+        "Normal river tiles: " +
+        rivers.normal
     );
-
 
     console.log(
-        "Navigable rivers: " +
-        riverStats.navigable
+        "Navigable river tiles: " +
+        rivers.navigable
     );
-
 
     console.log(
         "Resources: " +
-        resourceCount
+        resources
     );
-
 
     console.log(
         "Major starts: " +
-        startPositions.length
+        starts.length
     );
-
 
     console.log(
         "=========================================="
@@ -1974,7 +2316,7 @@ function generateMap() {
 
 
 // ============================================================
-// CIV VII EVENTS
+// EVENTS
 // ============================================================
 
 engine.on(
@@ -1990,5 +2332,5 @@ engine.on(
 
 
 console.log(
-    "Loaded Limespace Snowflake V8.5"
+    "Loaded Limespace Snowflake V8.8"
 );
